@@ -47,36 +47,26 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- Firebase Configuration ---
-        // 重要: GitHubで公開する前に、ここの値を自分のFirebaseのものに書き換えてください！
-        
-        let firebaseConfig;
-        try {
-            // Canvas環境用の自動設定
-            firebaseConfig = JSON.parse(__firebase_config);
-        } catch (e) {
-            // ▼ ここを自分の設定に書き換える ▼
-            firebaseConfig = {
-                apiKey: "YOUR_API_KEY",
-                authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-                projectId: "YOUR_PROJECT_ID",
-                storageBucket: "YOUR_PROJECT_ID.appspot.com",
-                messagingSenderId: "YOUR_SENDER_ID",
-                appId: "YOUR_APP_ID"
-            };
-            // ▲ ここまで ▲
-        }
+        // ここをご自身のFirebase設定値に書き換えてください
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_PROJECT_ID.appspot.com",
+            messagingSenderId: "YOUR_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
 
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
         
-        // 修正: Canvas環境では __app_id を使用し、それ以外では固定値を使用
-        // これにより、Canvas上での権限エラーを回避します
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'perfect-circle-game';
+        // アプリID（保存場所の識別子）
+        const appId = 'perfect-circle-game';
 
         const { useState, useEffect, useRef } = React;
 
@@ -162,19 +152,21 @@
         // --- Auth Helper ---
         const ensureAuth = async () => {
             if (auth.currentUser) return auth.currentUser;
-            for (let i = 0; i < 3; i++) {
-                try {
-                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                        await signInWithCustomToken(auth, __initial_auth_token);
-                    } else {
-                        await signInAnonymously(auth);
-                    }
-                    if (auth.currentUser) return auth.currentUser;
-                } catch (e) {
-                    await new Promise(r => setTimeout(r, 1000));
+            try {
+                await signInAnonymously(auth);
+                if (auth.currentUser) return auth.currentUser;
+            } catch (e) {
+                console.error("Auth error details:", e);
+                // エラーコードに応じたメッセージを投げる
+                if (e.code === 'auth/operation-not-allowed') {
+                    throw new Error("管理画面で「匿名ログイン」を有効にしてください");
+                } else if (e.code === 'auth/network-request-failed') {
+                    throw new Error("通信エラー：ネット接続を確認してください");
+                } else {
+                    throw new Error(`認証エラー: ${e.code}`);
                 }
             }
-            throw new Error("認証に失敗しました。再読み込みしてください。");
+            throw new Error("認証に失敗しました");
         };
 
         // --- Main Component ---
@@ -201,7 +193,9 @@
                 if (localBest && !isNaN(parseFloat(localBest))) setBestScore(parseFloat(localBest));
                 const localName = localStorage.getItem(`playerName_${appId}`);
                 if (localName) setPlayerName(localName);
-                ensureAuth().catch(console.error);
+                
+                // 初回ログイン試行
+                ensureAuth().catch(e => console.log("Initial auth waiting:", e.message));
                 return onAuthStateChanged(auth, (u) => setUser(u));
             }, []);
 
@@ -354,7 +348,8 @@
                     retry(); fetchRanking();
                 } catch (e) { 
                     console.error(e);
-                    setSubmitError("送信エラー: " + (e.message || "失敗しました"));
+                    // エラーメッセージをユーザーにわかりやすく表示
+                    setSubmitError(e.message || "送信失敗");
                 } finally { setIsSubmitting(false); }
             };
 
@@ -364,7 +359,9 @@
                 setIsLoadingRanking(true);
                 setRanking([]); 
                 try {
-                    await ensureAuth();
+                    // ここでも念のため認証チェック
+                    if(!auth.currentUser) await ensureAuth();
+
                     const q = query(
                         collection(db, 'artifacts', appId, 'public', 'data', 'scores'),
                         orderBy('score', 'desc'),
@@ -372,6 +369,7 @@
                     );
                     const snapshot = await getDocs(q);
                     
+                    // 安全なデータ変換
                     let scores = [];
                     snapshot.forEach(doc => {
                         const d = doc.data();
@@ -383,8 +381,8 @@
                     
                     setRanking(scores);
                 } catch (e) { 
-                    console.error(e);
-                    setRanking([]);
+                    console.error(e); 
+                    // ランキング取得失敗時もクラッシュさせない
                 }
                 setIsLoadingRanking(false);
             };

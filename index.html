@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Perfect Circle Challenge</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=M+PLUS+Rounded+1c:wght@400;700;900&display=swap" rel="stylesheet">
+    
+    <style>
+        body { 
+            touch-action: none; 
+            overflow: hidden; 
+            background-color: #050505; 
+            color: white; 
+            user-select: none; 
+            -webkit-user-select: none; 
+            font-family: 'M PLUS Rounded 1c', sans-serif;
+            overscroll-behavior: none;
+        }
+        .en-font { font-family: 'Inter', sans-serif; }
+        .glass { background: rgba(20, 20, 20, 0.95); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.1); box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5); }
+        .safe-pb { padding-bottom: env(safe-area-inset-bottom, 20px); }
+        .safe-pt { padding-top: env(safe-area-inset-top, 20px); }
+        .loader {
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-left-color: #10b981;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        @keyframes pop { 0% { transform: scale(0.8); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+        .animate-pop { animation: pop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- Firebase Configuration ---
+        // 重要: GitHubで公開する前に、ここの値を自分のFirebaseのものに書き換えてください！
+        
+        let firebaseConfig;
+        try {
+            firebaseConfig = JSON.parse(__firebase_config);
+        } catch (e) {
+            // ▼ ここを自分の設定に書き換える ▼
+            firebaseConfig = {
+  apiKey: "AIzaSyAj-lPXDJxGjTjPwif1fdorGxjn9tRya10",
+  authDomain: "my-circle-game.firebaseapp.com",
+  projectId: "my-circle-game",
+  storageBucket: "my-circle-game.firebasestorage.app",
+  messagingSenderId: "78412190070",
+  appId: "1:78412190070:web:e3c2706287475e6baa2a57",
+  measurementId: "G-8FPJH7T70H"
+};
+            // ▲ ここまで ▲
+        }
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = 'perfect-circle-game';
+
+        const { useState, useEffect, useRef } = React;
+
+        // --- SVG Icons ---
+        const IconTrophy = () => React.createElement("svg", { width: "16", height: "16", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, React.createElement("path", { d: "M6 9H4.5a2.5 2.5 0 0 1 0-5H6" }), React.createElement("path", { d: "M18 9h1.5a2.5 2.5 0 0 0 0-5H18" }), React.createElement("path", { d: "M4 22h16" }), React.createElement("path", { d: "M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" }), React.createElement("path", { d: "M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" }), React.createElement("path", { d: "M18 2H6v7a6 6 0 0 0 12 0V2Z" }));
+        const IconRefresh = () => React.createElement("svg", { width: "18", height: "18", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, React.createElement("path", { d: "M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" }), React.createElement("path", { d: "M21 3v5h-5" }), React.createElement("path", { d: "M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" }), React.createElement("path", { d: "M8 16H3v5" }));
+        const IconSave = () => React.createElement("svg", { width: "20", height: "20", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2.5", strokeLinecap: "round", strokeLinejoin: "round" }, React.createElement("path", { d: "M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" }), React.createElement("polyline", { points: "17 21 17 13 7 13 7 21" }), React.createElement("polyline", { points: "7 3 7 8 15 8" }));
+        const IconX = () => React.createElement("svg", { width: "20", height: "20", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, React.createElement("line", { x1: "18", y1: "6", x2: "6", y2: "18" }), React.createElement("line", { x1: "6", y1: "6", x2: "18", y2: "18" }));
+        const IconEdit = () => React.createElement("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, React.createElement("path", { d: "M12 20h9" }), React.createElement("path", { d: "M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" }));
+
+        // --- Audio System ---
+        class SoundManager {
+            constructor() { this.ctx = null; this.bgmNodes = []; this.isPlayingBGM = false; }
+            init() { if (!this.ctx) { const AudioContext = window.AudioContext || window.webkitAudioContext; if (AudioContext) this.ctx = new AudioContext(); } if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume(); }
+            startBGM() {
+                if (!this.ctx || this.isPlayingBGM) return;
+                this.isPlayingBGM = true;
+                const notes = [329.63, 392.00, 493.88, 587.33];
+                let noteIndex = 0;
+                const playLoop = () => {
+                    if (!this.isPlayingBGM) return;
+                    const t = this.ctx.currentTime;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine'; osc.frequency.value = notes[noteIndex];
+                    gain.gain.setValueAtTime(0, t);
+                    gain.gain.linearRampToValueAtTime(0.08, t + 0.1);
+                    gain.gain.exponentialRampToValueAtTime(0.001, t + 3);
+                    osc.connect(gain); gain.connect(this.ctx.destination);
+                    osc.start(t); osc.stop(t + 3.5);
+                    noteIndex = (noteIndex + 1) % notes.length;
+                    this.bgmNodes.push({ osc, gain, stopTime: t + 3.5 });
+                    this.bgmNodes = this.bgmNodes.filter(n => n.stopTime > this.ctx.currentTime);
+                    setTimeout(playLoop, 2000); 
+                };
+                playLoop();
+            }
+            playTone(freq, type, startTime, duration, vol) {
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = type; osc.frequency.setValueAtTime(freq, startTime);
+                gain.gain.setValueAtTime(0, startTime);
+                gain.gain.linearRampToValueAtTime(vol, startTime + 0.01);
+                gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+                osc.connect(gain); gain.connect(this.ctx.destination);
+                osc.start(startTime); osc.stop(startTime + duration);
+            }
+            playClickSound() { if (this.ctx) this.playTone(800, 'sine', this.ctx.currentTime, 0.05, 0.2); }
+            playResultSound(score) {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                if (score < 1) { this.playTone(80, 'sawtooth', now, 0.3, 0.4); return; }
+                if (score < 65) { this.playTone(100, 'triangle', now, 0.2, 0.2); return; }
+                const root = 440;
+                const ratios = score > 90 ? [1, 1.25, 1.5, 2] : [1, 1.25, 1.5];
+                ratios.forEach((r, i) => this.playTone(root * r, 'sine', now + i * 0.08, 0.8, 0.1));
+            }
+        }
+        const sound = new SoundManager();
+
+        // --- Math Logic ---
+        function fitCircle(points) {
+            const N = points.length;
+            if (N < 3) return null;
+            let sumX=0, sumY=0, sumX2=0, sumY2=0, sumXY=0, sumX3=0, sumY3=0, sumXY2=0, sumX2Y=0;
+            for (let p of points) {
+                const x = p.x; const y = p.y;
+                const x2 = x*x; const y2 = y*y;
+                sumX+=x; sumY+=y; sumX2+=x2; sumY2+=y2; sumXY+=x*y;
+                sumX3+=x*x2; sumY3+=y*y2; sumXY2+=x*y2; sumX2Y+=x2*y;
+            }
+            const C = N*sumX2 - sumX*sumX; const D = N*sumXY - sumX*sumY;
+            const E = N*sumX3 + N*sumXY2 - (sumX2+sumY2)*sumX; const G = N*sumY2 - sumY*sumY;
+            const H = N*sumX2Y + N*sumY3 - (sumX2+sumY2)*sumY;
+            const denom = C*G - D*D;
+            if (Math.abs(denom) < 1e-6) return null;
+            const a = (G*E - D*H) / (2*denom); const b = (C*H - D*E) / (2*denom);
+            let R = 0; for (let p of points) R += Math.sqrt((p.x-a)**2 + (p.y-b)**2);
+            R /= N;
+            return { x: a, y: b, r: R };
+        }
+
+        // --- Helper: Ensure Auth ---
+        const ensureAuth = async () => {
+            if (auth.currentUser) return auth.currentUser;
+            for (let i = 0; i < 3; i++) {
+                try {
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                    if (auth.currentUser) return auth.currentUser;
+                } catch (e) {
+                    await new Promise(r => setTimeout(r, 1000));
+                }
+            }
+            throw new Error("認証に失敗しました。再読み込みしてください。");
+        };
+
+        // --- Main Component ---
+        function App() {
+            const canvasRef = useRef(null);
+            const [gameState, setGameState] = useState('menu');
+            const [points, setPoints] = useState([]);
+            const [score, setScore] = useState(0); 
+            const [bestScore, setBestScore] = useState(0);
+            const [message, setMessage] = useState("");
+            const [user, setUser] = useState(null);
+            const [ranking, setRanking] = useState([]);
+            const [isLoadingRanking, setIsLoadingRanking] = useState(false);
+            const [playerName, setPlayerName] = useState("");
+            const [idealCircle, setIdealCircle] = useState(null);
+            const [showNameInput, setShowNameInput] = useState(false);
+            const [isSubmitting, setIsSubmitting] = useState(false);
+            const [submitError, setSubmitError] = useState(""); 
+            const [audioEnabled, setAudioEnabled] = useState(false);
+            const [isRankingOpen, setIsRankingOpen] = useState(false);
+
+            useEffect(() => {
+                const localBest = localStorage.getItem(`bestScore_${appId}`);
+                if (localBest && !isNaN(parseFloat(localBest))) setBestScore(parseFloat(localBest));
+                const localName = localStorage.getItem(`playerName_${appId}`);
+                if (localName) setPlayerName(localName);
+                ensureAuth().catch(console.error);
+                return onAuthStateChanged(auth, (u) => setUser(u));
+            }, []);
+
+            useEffect(() => {
+                const canvas = canvasRef.current;
+                if (!canvas) return;
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+                const ctx = canvas.getContext('2d');
+                if (gameState === 'menu') {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                } else if (points.length > 0) {
+                    draw(points, idealCircle);
+                }
+            }, [gameState, idealCircle, points, isRankingOpen]);
+
+            const enableAudio = () => {
+                if (!audioEnabled) {
+                    sound.init();
+                    sound.startBGM();
+                    setAudioEnabled(true);
+                }
+            };
+
+            const startDrawing = (e) => {
+                if (isRankingOpen || showNameInput) return;
+                enableAudio();
+                setPoints([]);
+                setScore(0);
+                setMessage("");
+                setIdealCircle(null);
+                setGameState('drawing');
+                setPoints([getPos(e)]);
+            };
+
+            const drawMove = (e) => {
+                if (gameState !== 'drawing') return;
+                const pos = getPos(e);
+                setPoints(prev => {
+                    const newPts = [...prev, pos];
+                    draw(newPts, null);
+                    return newPts;
+                });
+            };
+
+            const endDrawing = () => {
+                if (gameState !== 'drawing') return;
+                if (points.length < 20) {
+                    setMessage("Too Short");
+                    setGameState('menu'); 
+                    setTimeout(() => { if(gameState !== 'drawing') setMessage(""); }, 1000);
+                    return;
+                }
+                calculateScore();
+            };
+
+            const getPos = (e) => {
+                const canvas = canvasRef.current;
+                const rect = canvas.getBoundingClientRect();
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                return { x: clientX - rect.left, y: clientY - rect.top };
+            };
+
+            const draw = (pts, ideal = null) => {
+                const canvas = canvasRef.current;
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                if (pts.length > 0) {
+                    ctx.strokeStyle = ideal ? '#ef4444' : '#ffffff';
+                    ctx.lineWidth = 6;
+                    ctx.lineCap = 'round';
+                    ctx.lineJoin = 'round';
+                    ctx.beginPath();
+                    ctx.moveTo(pts[0].x, pts[0].y);
+                    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+                    ctx.stroke();
+                }
+                if (ideal) {
+                    ctx.strokeStyle = '#10b981';
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    ctx.arc(ideal.x, ideal.y, ideal.r, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+            };
+
+            const calculateScore = () => {
+                const circle = fitCircle(points);
+                if (!circle || isNaN(circle.x) || isNaN(circle.r) || circle.r <= 0) {
+                     setMessage("判定できません");
+                     setGameState('menu');
+                     setTimeout(() => setMessage(""), 1000);
+                     return;
+                }
+                
+                const start = points[0]; const end = points[points.length-1];
+                const gap = Math.sqrt((start.x - end.x)**2 + (start.y - end.y)**2);
+                const gapRatio = gap / circle.r;
+
+                let angleAccum = 0;
+                for(let i=1; i<points.length; i++){
+                    const a1 = Math.atan2(points[i-1].y-circle.y, points[i-1].x-circle.x);
+                    const a2 = Math.atan2(points[i].y-circle.y, points[i].x-circle.x);
+                    let da = a2 - a1;
+                    if(da > Math.PI) da -= 2*Math.PI;
+                    if(da < -Math.PI) da += 2*Math.PI;
+                    angleAccum += da;
+                }
+                const isClosedByAngle = Math.abs(angleAccum) > (Math.PI * 2 * 0.90);
+
+                if (gapRatio > 0.25 || !isClosedByAngle) {
+                    finishGame(0, circle, "Not Closed");
+                    return;
+                }
+
+                let sumSquaredErr = 0;
+                points.forEach(p => {
+                    const dist = Math.sqrt((p.x - circle.x)**2 + (p.y - circle.y)**2);
+                    sumSquaredErr += (dist - circle.r) ** 2;
+                });
+                const rmse = Math.sqrt(sumSquaredErr / points.length);
+                const roundnessErr = (rmse / circle.r) * 100;
+
+                let s = 100;
+                s -= roundnessErr * 3.5; 
+                s -= gapRatio * 100 * 0.4;
+                if (Math.abs(angleAccum) / (2*Math.PI) < 0.95) s -= 5;
+
+                const finalVal = Math.round(Math.max(0, Math.min(100, s)) * 10) / 10;
+                
+                let msg = "TERRIBLE";
+                if (finalVal >= 95.0) msg = "GODLIKE";
+                else if (finalVal >= 90.0) msg = "PERFECT";
+                else if (finalVal >= 80.0) msg = "GREAT";
+                else if (finalVal >= 65.0) msg = "GOOD";
+                else if (finalVal >= 50.0) msg = "BAD";
+
+                finishGame(finalVal, circle, msg);
+            };
+
+            const finishGame = (val, circle, msg) => {
+                setScore(val);
+                setIdealCircle(circle);
+                setMessage(msg);
+                setGameState('result');
+                sound.playResultSound(val);
+                if (val > bestScore) {
+                    setBestScore(val);
+                    localStorage.setItem(`bestScore_${appId}`, val.toString());
+                }
+                requestAnimationFrame(() => draw(points, circle));
+            }
+
+            const submitScore = async () => {
+                sound.playClickSound();
+                setSubmitError(""); 
+                if (!playerName.trim()) { setSubmitError("名前を入力してください"); return; }
+                
+                setIsSubmitting(true);
+                localStorage.setItem(`playerName_${appId}`, playerName);
+                
+                try {
+                    const currentUser = await ensureAuth();
+                    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'scores'), {
+                        name: playerName,
+                        score: score,
+                        uid: currentUser.uid,
+                        date: new Date().toISOString()
+                    });
+                    
+                    setShowNameInput(false);
+                    sound.playTone(880, 'sine', sound.ctx.currentTime, 0.5, 0.1);
+                    retry(); 
+                    fetchRanking();
+                } catch (e) { 
+                    console.error(e);
+                    setSubmitError("送信エラー: " + (e.message || "失敗しました"));
+                } finally {
+                    setIsSubmitting(false);
+                }
+            };
+
+            const fetchRanking = async () => {
+                sound.playClickSound();
+                setIsRankingOpen(true);
+                setIsLoadingRanking(true);
+                setRanking([]); 
+                try {
+                    await ensureAuth();
+                    const q = query(
+                        collection(db, 'artifacts', appId, 'public', 'data', 'scores'),
+                        orderBy('score', 'desc'),
+                        limit(100)
+                    );
+                    const snapshot = await getDocs(q);
+                    let scores = [];
+                    snapshot.forEach(doc => scores.push(doc.data()));
+                    setRanking(scores);
+                } catch (e) { console.error(e); }
+                setIsLoadingRanking(false);
+            };
+
+            const retry = () => {
+                setPoints([]);
+                setScore(0);
+                setMessage("");
+                setIdealCircle(null);
+                setGameState('menu');
+                setShowNameInput(false);
+                setSubmitError("");
+                const ctx = canvasRef.current.getContext('2d');
+                ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+            };
+
+            const handleRetryClick = () => { sound.playClickSound(); retry(); }
+
+            return React.createElement('div', { 
+                className: "relative w-full h-full min-h-screen overflow-hidden bg-neutral-950 text-white select-none flex flex-col",
+                onClick: enableAudio, 
+                onPointerDown: enableAudio,
+                onTouchStart: enableAudio
+            },
+                React.createElement('canvas', {
+                    ref: canvasRef,
+                    className: "absolute inset-0 w-full h-full cursor-crosshair z-10 touch-none",
+                    onMouseDown: startDrawing, onMouseMove: drawMove, onMouseUp: endDrawing,
+                    onTouchStart: startDrawing, onTouchMove: drawMove, onTouchEnd: endDrawing
+                }),
+
+                React.createElement('div', { className: "relative z-20 flex-1 flex flex-col justify-between p-6 pointer-events-none safe-pb safe-pt" },
+                    React.createElement('div', { className: "flex justify-between items-start" },
+                        React.createElement('div', null,
+                            React.createElement('h1', { className: "text-xl md:text-2xl font-black tracking-tighter opacity-100 italic en-font" }, "PERFECT CIRCLE"),
+                        ),
+                        React.createElement('div', { className: "text-right" },
+                            React.createElement('div', { className: "text-[10px] opacity-70 font-bold" }, "自己ベスト"),
+                            React.createElement('div', { className: "text-2xl font-mono font-black text-emerald-400" }, bestScore.toFixed(1) + "%")
+                        )
+                    ),
+
+                    React.createElement('div', { className: "flex-1 flex flex-col justify-center items-center w-full" },
+                        (gameState === 'result' || message === "Too Short" || message === "判定できません") && !showNameInput && React.createElement('div', { className: "text-center animate-pop mt-[-10%]" },
+                            React.createElement('div', { className: "text-7xl md:text-8xl font-black tracking-tighter drop-shadow-2xl en-font" }, score.toFixed(1) + "%"),
+                            React.createElement('div', { 
+                                className: `text-3xl font-black mt-2 uppercase tracking-wide italic en-font ${score >= 80 ? 'text-emerald-400' : (score === 0 ? 'text-red-500' : 'text-neutral-500')}` 
+                            }, message),
+                        ),
+
+                        (message === "Too Short" || message === "判定できません") && React.createElement('div', { className: "text-xl font-bold text-red-500 animate-pulse bg-black/50 p-4 rounded-xl backdrop-blur mt-4" }, 
+                            message === "Too Short" ? "短すぎます！" : "判定できません"
+                        ),
+
+                        showNameInput && React.createElement('div', { className: "pointer-events-auto glass p-6 rounded-2xl w-full max-w-xs animate-pop relative" },
+                            React.createElement('button', { 
+                                onClick: () => { sound.playClickSound(); setShowNameInput(false); setSubmitError(""); },
+                                className: "absolute top-2 right-2 text-neutral-400 hover:text-white"
+                            }, React.createElement(IconX)),
+                            React.createElement('p', { className: "text-sm font-bold text-emerald-400 mb-4" }, "ランキングに登録"),
+                            React.createElement('input', {
+                                type: "text",
+                                value: playerName,
+                                onChange: (e) => setPlayerName(e.target.value),
+                                placeholder: "名前を入力",
+                                className: "w-full bg-black/50 border border-white/10 rounded-lg px-4 py-3 text-white mb-3 text-center font-bold focus:outline-none focus:border-emerald-500 transition",
+                                maxLength: 10
+                            }),
+                            React.createElement('button', {
+                                onClick: submitScore,
+                                disabled: isSubmitting,
+                                className: "w-full bg-white text-black font-black py-3 rounded-lg hover:bg-neutral-200 transition text-sm flex justify-center items-center"
+                            }, isSubmitting ? React.createElement("div", { className: "loader border-black w-4 h-4 mr-2" }) : "送信"),
+                            submitError && React.createElement('div', { className: "text-red-400 text-xs mt-3 text-center font-bold animate-pulse" }, submitError)
+                        )
+                    ),
+
+                    React.createElement('div', { className: "flex flex-col gap-3 items-center w-full" },
+                        gameState === 'result' && !showNameInput && React.createElement('button', {
+                            onClick: () => { sound.playClickSound(); setShowNameInput(true); setSubmitError(""); },
+                            className: "pointer-events-auto bg-emerald-500 hover:bg-emerald-400 text-white shadow-lg shadow-emerald-500/20 w-56 py-3 rounded-full font-bold text-sm transition flex items-center justify-center gap-2 transform hover:scale-105"
+                        }, React.createElement(IconSave), "スコア登録"),
+
+                        gameState === 'result' && !showNameInput && React.createElement('button', {
+                            onClick: handleRetryClick,
+                            className: "pointer-events-auto bg-white text-black w-56 py-3 rounded-full font-bold text-sm shadow-[0_0_20px_rgba(255,255,255,0.2)] hover:scale-105 transition transform flex items-center justify-center gap-2"
+                        }, React.createElement(IconRefresh), "もう一度"),
+
+                        gameState === 'menu' && points.length === 0 && React.createElement('p', { className: "text-neutral-500 animate-pulse text-sm font-bold flex items-center gap-2 mb-8" }, 
+                            React.createElement(IconEdit), "一筆書きで綺麗な円を描いてください"
+                        ),
+
+                        !showNameInput && React.createElement('button', {
+                            onClick: fetchRanking,
+                            className: "pointer-events-auto bg-neutral-900/80 backdrop-blur border border-white/10 text-neutral-400 w-56 py-3 rounded-full font-bold text-sm hover:bg-neutral-800 hover:text-white transition flex items-center justify-center gap-2"
+                        }, React.createElement(IconTrophy), "世界ランキング")
+                    )
+                ),
+
+                isRankingOpen && React.createElement('div', { className: "absolute inset-0 z-50 bg-black/95 backdrop-blur-xl flex flex-col p-6 animate-pop safe-pt safe-pb pointer-events-auto" },
+                    React.createElement('div', { className: "flex justify-center items-center mb-6 relative" },
+                        React.createElement('h2', { className: "text-xl font-black text-white" }, "🏆 世界ランキング"),
+                    ),
+                    
+                    React.createElement('div', { className: "flex-1 overflow-y-auto" },
+                        isLoadingRanking ? 
+                            React.createElement('div', { className: "flex justify-center items-center h-40" }, React.createElement('div', { className: "loader" })) :
+                        ranking.length === 0 ? 
+                            React.createElement('div', { className: "text-center text-neutral-600 mt-10 text-sm" }, "データがありません") :
+                        React.createElement('table', { className: "w-full text-left table-fixed" },
+                            React.createElement('thead', { className: "text-xs text-neutral-500 border-b border-white/5" },
+                                React.createElement('tr', null,
+                                    React.createElement('th', { className: "pb-2 w-16 text-center" }, "順位"),
+                                    React.createElement('th', { className: "pb-2 pl-4" }, "名前"),
+                                    React.createElement('th', { className: "pb-2 text-right pr-2" }, "スコア")
+                                )
+                            ),
+                            React.createElement('tbody', null,
+                                ranking.map((r, i) => React.createElement('tr', { key: i, className: "border-b border-white/5 hover:bg-white/5 transition" },
+                                    React.createElement('td', { className: `py-4 w-16 text-center flex justify-center items-center font-mono font-bold ${
+                                        i === 0 ? 'text-yellow-400 text-xl' : 
+                                        i === 1 ? 'text-gray-300 text-xl' : 
+                                        i === 2 ? 'text-amber-600 text-xl' : 'text-neutral-500 text-lg'}` }, 
+                                        i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1
+                                    ),
+                                    React.createElement('td', { className: "py-4 pl-4 font-bold text-white text-sm truncate" }, r.name),
+                                    React.createElement('td', { className: "py-4 text-right font-mono text-emerald-400 font-bold en-font" }, r.score.toFixed(1) + "%")
+                                ))
+                            )
+                        )
+                    ),
+                    React.createElement('div', { className: "mt-4 flex justify-center" },
+                        React.createElement('button', {
+                            onClick: closeRanking,
+                            className: "bg-white text-black px-6 py-2 rounded-full font-bold text-xs hover:bg-neutral-200 transition shadow-lg w-auto"
+                        }, "閉じる")
+                    )
+                )
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(React.createElement(App));
+    </script>
+</body>
+</html>

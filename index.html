@@ -3,8 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Perfect Circle Challenge</title>
     
+    <!-- ▼ タイトル設定（ここがLINEやタブの表示になります） ▼ -->
+    <title>PERFECT CIRCLE</title>
+    <meta property="og:title" content="PERFECT CIRCLE">
+    <meta property="og:description" content="一筆書きで完璧な円を描こう！世界ランキングに挑戦！">
+    <meta property="og:type" content="website">
+    <!-- ▲ ここまで ▲ -->
+
     <!-- Libraries -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -33,8 +39,8 @@
             border: 3px solid rgba(255, 255, 255, 0.1);
             border-left-color: #10b981;
             border-radius: 50%;
-            width: 20px;
-            height: 20px;
+            width: 30px;
+            height: 30px;
             animation: spin 1s linear infinite;
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
@@ -47,27 +53,31 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // --- Firebase Configuration ---
-        // ここをご自身のFirebase設定値に書き換えてください
+        // =================================================================
+        // 【重要】ここの中身を、あなたのFirebaseの設定値に書き換えてください！
+        // =================================================================
         const firebaseConfig = {
-  apiKey: "AIzaSyAj-lPXDJxGjTjPwif1fdorGxjn9tRya10",
-  authDomain: "my-circle-game.firebaseapp.com",
-  projectId: "my-circle-game",
-  storageBucket: "my-circle-game.firebasestorage.app",
-  messagingSenderId: "78412190070",
-  appId: "1:78412190070:web:e3c2706287475e6baa2a57",
-  measurementId: "G-8FPJH7T70H"
-};
+            apiKey: "YOUR_API_KEY_HERE",
+            authDomain: "YOUR_PROJECT.firebaseapp.com",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_PROJECT.appspot.com",
+            messagingSenderId: "YOUR_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+        // =================================================================
 
-
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
+        let app, auth, db;
+        try {
+            app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+        } catch (e) {
+            console.error("Firebase Init Error:", e);
+        }
         
-        // アプリID（保存場所の識別子）
         const appId = 'perfect-circle-game';
 
         const { useState, useEffect, useRef } = React;
@@ -154,21 +164,19 @@
         // --- Auth Helper ---
         const ensureAuth = async () => {
             if (auth.currentUser) return auth.currentUser;
-            try {
-                await signInAnonymously(auth);
-                if (auth.currentUser) return auth.currentUser;
-            } catch (e) {
-                console.error("Auth error details:", e);
-                // エラーコードに応じたメッセージを投げる
-                if (e.code === 'auth/operation-not-allowed') {
-                    throw new Error("管理画面で「匿名ログイン」を有効にしてください");
-                } else if (e.code === 'auth/network-request-failed') {
-                    throw new Error("通信エラー：ネット接続を確認してください");
-                } else {
-                    throw new Error(`認証エラー: ${e.code}`);
+            for (let i = 0; i < 3; i++) {
+                try {
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                    if (auth.currentUser) return auth.currentUser;
+                } catch (e) {
+                    await new Promise(r => setTimeout(r, 1000));
                 }
             }
-            throw new Error("認証に失敗しました");
+            throw new Error("認証に失敗しました。再読み込みしてください。");
         };
 
         // --- Main Component ---
@@ -195,9 +203,7 @@
                 if (localBest && !isNaN(parseFloat(localBest))) setBestScore(parseFloat(localBest));
                 const localName = localStorage.getItem(`playerName_${appId}`);
                 if (localName) setPlayerName(localName);
-                
-                // 初回ログイン試行
-                ensureAuth().catch(e => console.log("Initial auth waiting:", e.message));
+                ensureAuth().catch(console.error);
                 return onAuthStateChanged(auth, (u) => setUser(u));
             }, []);
 
@@ -350,8 +356,7 @@
                     retry(); fetchRanking();
                 } catch (e) { 
                     console.error(e);
-                    // エラーメッセージをユーザーにわかりやすく表示
-                    setSubmitError(e.message || "送信失敗");
+                    setSubmitError("送信エラー: " + (e.message || "失敗しました"));
                 } finally { setIsSubmitting(false); }
             };
 
@@ -361,9 +366,7 @@
                 setIsLoadingRanking(true);
                 setRanking([]); 
                 try {
-                    // ここでも念のため認証チェック
-                    if(!auth.currentUser) await ensureAuth();
-
+                    await ensureAuth();
                     const q = query(
                         collection(db, 'artifacts', appId, 'public', 'data', 'scores'),
                         orderBy('score', 'desc'),
@@ -371,7 +374,6 @@
                     );
                     const snapshot = await getDocs(q);
                     
-                    // 安全なデータ変換
                     let scores = [];
                     snapshot.forEach(doc => {
                         const d = doc.data();
@@ -384,7 +386,7 @@
                     setRanking(scores);
                 } catch (e) { 
                     console.error(e); 
-                    // ランキング取得失敗時もクラッシュさせない
+                    setRanking([]);
                 }
                 setIsLoadingRanking(false);
             };
